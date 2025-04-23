@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import fs from "fs";
 
 puppeteer.use(StealthPlugin());
 
@@ -10,7 +11,7 @@ function delay(ms: number) {
 async function getGamesFromSteamDB(steamId: string) {
 	const url = `https://steamdb.info/calculator/${steamId}/?cc=tr&all_games`;
 	const browser = await puppeteer.launch({
-		headless: false,
+		headless: true,
 		args: ["--no-sandbox", "--disable-setuid-sandbox"],
 	});
 	const page = await browser.newPage();
@@ -37,20 +38,32 @@ async function getGamesFromSteamDB(steamId: string) {
 	console.log("Waiting for games to load...");
 	await page.waitForSelector("td.text-left > a", { timeout: 60000 });
 
-	console.log("Extracting games...");
-	const games = await page.evaluate(() => {
-		const gameLinks = Array.from(document.querySelectorAll("td.text-left > a"));
-		return gameLinks.map((link) => link.textContent?.trim()).filter(Boolean);
-	});
+	const gameElements = await page.$$("td.text-left > a");
+	const unsupportedGames: string[] = [];
 
-	if (games.length === 0) {
-		console.log("No games found. Profile may be private.");
-	} else {
-		console.log(`🎮 Games owned by SteamID ${steamId}:`);
-		games.forEach((game, index) => console.log(`${index + 1}. ${game}`));
+	console.log("Checking games for Linux support...");
+	for (const gameEl of gameElements) {
+		await gameEl.hover();
+		await delay(500);
+
+		const name = await page.evaluate((el) => el.textContent?.trim() || "", gameEl);
+		const hasLinuxIcon = (await page.$(".octicon.octicon-linux")) !== null;
+
+		console.log(`${name} → Linux: ${hasLinuxIcon}`);
+		if (!hasLinuxIcon) {
+			unsupportedGames.push(name);
+		}
 	}
 
 	await browser.close();
+
+	if (unsupportedGames.length > 0) {
+		console.log(`Writing ${unsupportedGames.length} unsupported games to output.txt...`);
+		fs.writeFileSync("output.txt", unsupportedGames.join("\n"));
+		console.log("Done.");
+	} else {
+		console.log("All games support Linux. Nothing to write.");
+	}
 }
 
 const steamId = process.argv[2];
