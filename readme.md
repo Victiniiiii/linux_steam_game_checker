@@ -1,5 +1,10 @@
 # Linux Steam Game Checker
 
+## Usage
+```bash
+ts-node index.ts STEAM_ID_HERE
+```
+
 ## What does this code do?
 
 This is a basic web scraping project which uses puppeteer.
